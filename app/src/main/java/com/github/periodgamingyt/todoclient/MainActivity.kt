@@ -63,6 +63,12 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
+import androidx.datastore.core.DataStore
+import androidx.datastore.preferences.core.Preferences
+import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.stringPreferencesKey
+import androidx.datastore.preferences.preferencesDataStore
+import kotlinx.coroutines.runBlocking
 
 enum class ConnectionStatus {
     NO_CONN,
@@ -127,11 +133,27 @@ fun buildInventory(serverHandler: ServerHandler): List<InventoryItem> {
     })
 }
 
+data class DatastoreItem(
+    var name: String,
+    var value: String
+)
+
+fun boolToInt(value: Boolean): Int {
+    return if(value)
+        1
+        else 0
+}
+
+fun intToBool(value: Int): Boolean {
+    return value != 0
+}
+
 @Composable
 fun ActualApp(
     modifier: Modifier,
     context: Context,
-    serverHandler: ServerHandler
+    serverHandler: ServerHandler,
+    dataStore: DataStore<Preferences>
 ) {
     val maxWidthMod = Modifier
         .fillMaxWidth(fraction = 1f)
@@ -282,14 +304,107 @@ fun ActualApp(
             )
 
             Button(
-                onClick = {},
+                onClick = {
+                    val items: MutableList<DatastoreItem> = mutableListOf()
+                    items.add(DatastoreItem("address", serverHandler.address))
+                    items.add(DatastoreItem("password", serverHandler.password))
+                    items.add(DatastoreItem("checklist-size", serverHandler.checklist.size.toString()))
+                    items.add(DatastoreItem("inventory-size", serverHandler.inventory.size.toString()))
+                    for(i in checklist.indices) {
+                        val item = checklist[i]
+                        items.add(DatastoreItem("checklist-$i-name", item.name))
+                        items.add(DatastoreItem("checklist-$i-checked", boolToInt(item.checked).toString()))
+                    }
+
+                    for(i in inventory.indices) {
+                        val item = inventory[i]
+                        items.add(DatastoreItem("checklist-$i-name", item.name))
+                        items.add(DatastoreItem("checklist-$i-current", item.current.toString()))
+                        items.add(DatastoreItem("checklist-$i-max", item.max.toString()))
+                    }
+
+                    runBlocking { dataStore.edit { prefs ->
+                        prefs.clear()
+                        for (i in items.indices) {
+                            val key = stringPreferencesKey(items[i].name)
+                            prefs[key] = items[i].value
+                        }
+                    } }
+                },
+
                 content = { Text("SAVE", onTextLayout = {}) },
                 modifier = Modifier.padding(horizontal = 4.dp)
             )
 
             Button(
+                onClick = {
+                    runBlocking { dataStore.edit { prefs ->
+                        serverHandler.address = prefs[stringPreferencesKey("address")] ?: ""
+                        serverHandler.password = prefs[stringPreferencesKey("password")] ?: ""
+                        val checklistSize = (
+                                prefs[stringPreferencesKey("checklist-size")] ?: ""
+                        ).toIntOrNull() ?: 0
+
+                        val inventorySize = (
+                                prefs[stringPreferencesKey("inventory-size")] ?: ""
+                        ).toIntOrNull() ?: 0
+
+                        serverHandler.checklist.clear()
+                        serverHandler.inventory.clear()
+                        for (i in 0..<checklistSize) {
+                            val name = prefs[stringPreferencesKey("checklist-$i-name")] ?: ""
+                            val checked = intToBool(
+                                (
+                                    prefs[stringPreferencesKey("checklist-$i-checked")] ?: ""
+                                ).toIntOrNull() ?: 0
+                            )
+
+                            serverHandler.checklist[name] = ChecklistItem(
+                                name,
+                                checked,
+                                i
+                            )
+                        }
+
+                        for (i in 0..<inventorySize) {
+                            val name = prefs[stringPreferencesKey("inventory-$i-name")] ?: ""
+                            val current = (
+                                prefs[stringPreferencesKey("inventory-$i-current")] ?: ""
+                            ).toIntOrNull() ?: 0
+
+                            val max = (
+                                prefs[stringPreferencesKey("inventory-$i-max")] ?: ""
+                            ).toIntOrNull() ?: 0
+
+                            serverHandler.inventory[name] = InventoryItem(
+                                name,
+                                current,
+                                max,
+                                i
+                            )
+                        }
+                    } }
+
+                    checklist = buildChecklist(serverHandler)
+                    inventory = buildInventory(serverHandler)
+
+                    // a trick to get LazyColumn to refresh
+                    tabIndex += 2
+                },
+
+                content = { Text("LOAD", onTextLayout = {}) },
+                modifier = Modifier.padding(horizontal = 4.dp)
+            )
+
+            Button(
                 onClick = {},
-                content = { Text("RESTORE", onTextLayout = {}) },
+                content = { Text("SEND", onTextLayout = {}) },
+                modifier = Modifier.padding(horizontal = 4.dp)
+            )
+
+            Button(
+                onClick = {},
+                content = { Text("RECEIVE", onTextLayout = {}) },
                 modifier = Modifier.padding(horizontal = 4.dp)
             )
 
@@ -679,6 +794,7 @@ fun ActualApp(
 }
 
 class MainActivity : ComponentActivity() {
+    private val dataStore: DataStore<Preferences> by preferencesDataStore(name = "settings")
     @OptIn(ExperimentalMaterial3Api::class)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -703,7 +819,8 @@ class MainActivity : ComponentActivity() {
                     ActualApp(
                         Modifier.padding(innerPadding),
                         this,
-                        serverHandler
+                        serverHandler,
+                        dataStore
                     )
                 }
             }
