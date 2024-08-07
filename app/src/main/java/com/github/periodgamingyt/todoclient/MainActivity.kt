@@ -1,3 +1,7 @@
+
+// my hope is that this code is so bad that i'm never allowed to write
+// mobile ui/ui code again. and yet people have the audacity to wonder
+// why people like programming in c. ImGUI is my beloved
 package com.github.periodgamingyt.todoclient
 
 import android.app.AlertDialog
@@ -16,6 +20,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
@@ -25,10 +30,13 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults.topAppBarColors
@@ -45,11 +53,16 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.vectorResource
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
 
 enum class ConnectionStatus {
     NO_CONN,
@@ -137,6 +150,18 @@ fun ActualApp(
     val checklistScrollState by rememberSaveable(stateSaver = ScrollState.Saver) { mutableStateOf(ScrollState(0)) }
     val inventoryScrollState by rememberSaveable(stateSaver = ScrollState.Saver) { mutableStateOf(ScrollState(0)) }
     val actionsScrollState by rememberSaveable(stateSaver = ScrollState.Saver) { mutableStateOf(ScrollState(0)) }
+    var checklistAddShowDialog by rememberSaveable { mutableStateOf(false) }
+    var inventoryAddShowDialog by rememberSaveable { mutableStateOf(false) }
+    var checklistAddText by rememberSaveable { mutableStateOf("") }
+    var inventoryAddText by rememberSaveable { mutableStateOf("") }
+    val h6 = TextStyle(
+        fontFamily = FontFamily.Default,
+        fontWeight = FontWeight.Medium,
+        fontSize = 20.sp,
+        lineHeight = 24.sp,
+        letterSpacing = 0.5.sp
+    )
+
     var checklist: List<ChecklistItem> by rememberSaveable { mutableStateOf(listOf()) }
     var inventory: List<InventoryItem> by rememberSaveable { mutableStateOf(listOf()) }
     checklist = buildChecklist(serverHandler)
@@ -227,7 +252,31 @@ fun ActualApp(
             horizontalArrangement = Arrangement.Center
         ) {
             Button(
-                onClick = {},
+                onClick = {
+                    for(i in checklist.indices) {
+                        serverHandler.checklist[checklist[i].name] = ChecklistItem(
+                            checklist[i].name,
+                            false,
+                            i
+                        )
+                    }
+
+                    for(i in inventory.indices) {
+                        serverHandler.inventory[inventory[i].name] = InventoryItem(
+                            inventory[i].name,
+                            0,
+                            inventory[i].max,
+                            i
+                        )
+                    }
+
+                    checklist = buildChecklist(serverHandler)
+                    inventory = buildInventory(serverHandler)
+
+                    // a trick to get LazyColumn to refresh
+                    tabIndex += 2
+                },
+
                 content = { Text("RESET", onTextLayout = {}) },
                 modifier = Modifier.padding(horizontal = 4.dp)
             )
@@ -357,6 +406,26 @@ fun ActualApp(
                             }
                         }
                     }
+
+                    item {
+                        IconButton(
+                            onClick = {
+                                checklistAddShowDialog = true
+                            },
+
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .align(Alignment.CenterHorizontally)
+                        ) {
+                            Icon(
+                                imageVector = ImageVector.vectorResource(
+                                    R.drawable.add
+                                ),
+
+                                "Add an item"
+                            )
+                        }
+                    }
                 }
 
             tabIndexInventory ->
@@ -453,10 +522,158 @@ fun ActualApp(
                             }
                         }
                     }
+
+                    item {
+                        IconButton(
+                            onClick = {
+                                inventoryAddShowDialog = true
+                            },
+
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .align(Alignment.CenterHorizontally)
+                        ) {
+                            Icon(
+                                imageVector = ImageVector.vectorResource(
+                                    R.drawable.add
+                                ),
+
+                                "Add an item"
+                            )
+                        }
+                    }
                 }
 
+            // trick to get lazy columns to forcefully refresh
             2 -> tabIndex = 0
             3 -> tabIndex = 1
+        }
+
+        if(checklistAddShowDialog) {
+            Dialog(
+                onDismissRequest = {}
+            ) {
+                Surface(shape = MaterialTheme.shapes.medium) {
+                    Column {
+                        Column(modifier = Modifier.padding(24.dp)) {
+                            Text(
+                                "What name do you want?",
+                                style = h6
+                            )
+
+                            Spacer(modifier = Modifier.size(16.dp))
+                            OutlinedTextField(
+                                value = checklistAddText,
+                                onValueChange = { newValue ->
+                                    checklistAddText = newValue
+                                },
+
+                                label = { Text("Name") }
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.size(4.dp))
+                        Row(
+                            modifier = Modifier
+                                .padding(8.dp)
+                                .fillMaxWidth(),
+
+                            horizontalArrangement = Arrangement
+                                .spacedBy(4.dp, Alignment.End)
+                        ) {
+                            TextButton(
+                                onClick = {
+                                    checklistAddShowDialog = false
+                                },
+
+                                content = { Text("CANCEL") }
+                            )
+
+                            TextButton(
+                                onClick = {
+                                    serverHandler.checklist[checklistAddText] = ChecklistItem(
+                                        checklistAddText,
+                                        false,
+                                        checklist.size
+                                    )
+
+                                    checklistAddShowDialog = false
+                                    checklist = buildChecklist(serverHandler)
+
+                                    // a trick to get LazyColumn to refresh
+                                    tabIndex += 2
+                                },
+
+                                content = { Text("ADD") }
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        if(inventoryAddShowDialog) {
+            Dialog(
+                onDismissRequest = {}
+            ) {
+                Surface(shape = MaterialTheme.shapes.medium) {
+                    Column {
+                        Column(modifier = Modifier.padding(24.dp)) {
+                            Text(
+                                "What name do you want?",
+                                style = h6
+                            )
+
+                            Spacer(modifier = Modifier.size(16.dp))
+                            OutlinedTextField(
+                                value = inventoryAddText,
+                                onValueChange = { newValue ->
+                                    inventoryAddText = newValue
+                                },
+
+                                label = { Text("Name") }
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.size(4.dp))
+                        Row(
+                            modifier = Modifier
+                                .padding(8.dp)
+                                .fillMaxWidth(),
+
+                            horizontalArrangement = Arrangement
+                                .spacedBy(4.dp, Alignment.End)
+                        ) {
+                            TextButton(
+                                onClick = {
+                                    inventoryAddShowDialog = false
+                                },
+
+                                content = { Text("CANCEL") }
+                            )
+
+                            TextButton(
+                                onClick = {
+                                    serverHandler.inventory[inventoryAddText] = InventoryItem(
+                                        inventoryAddText,
+                                        0,
+                                        0,
+                                        inventory.size
+                                    )
+
+                                    inventoryAddShowDialog = false
+                                    inventory = buildInventory(serverHandler)
+
+                                    // a trick to get LazyColumn to refresh
+                                    tabIndex += 2
+                                },
+
+                                content = { Text("ADD") }
+                            )
+                        }
+                    }
+                }
+            }
         }
     }
 }
@@ -466,10 +683,6 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val serverHandler = ServerHandler()
-        serverHandler.checklist["test1"] = ChecklistItem("test1", true, 0)
-        serverHandler.checklist["test2"] = ChecklistItem("test2", false, 1)
-        serverHandler.inventory["test1"] = InventoryItem("test1", 1, 5, 0)
-        serverHandler.inventory["test2"] = InventoryItem("test2", 0, 6, 0)
         enableEdgeToEdge()
         setContent {
             MaterialTheme {
