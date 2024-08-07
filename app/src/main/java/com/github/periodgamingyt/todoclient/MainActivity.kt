@@ -2,7 +2,6 @@ package com.github.periodgamingyt.todoclient
 
 import android.app.AlertDialog
 import android.content.Context
-import android.content.DialogInterface
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -14,7 +13,9 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
@@ -38,7 +39,6 @@ import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.saveable.mapSaver
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -56,122 +56,70 @@ enum class ConnectionStatus {
     ATTEMPT_CONN,
     BAD_PASS,
     FAIL_CONN,
-    SUCCESS_CONN;
-
-    companion object {
-        fun toInt(status: ConnectionStatus): Int {
-            return when(status) {
-                NO_CONN -> 0
-                ATTEMPT_CONN -> 1
-                BAD_PASS -> 2
-                FAIL_CONN -> 3
-                SUCCESS_CONN -> 4
-            }
-        }
-
-        fun fromInt(int: Int): ConnectionStatus {
-            return when(int) {
-                0 -> NO_CONN
-                1 -> ATTEMPT_CONN
-                2 -> BAD_PASS
-                3 -> FAIL_CONN
-                4 -> SUCCESS_CONN
-                else -> {
-                    throw Error("We have REALLY bad data")
-                }
-            }
-        }
-    }
+    SUCCESS_CONN
 }
 
+data class ChecklistItem(
+    var name: String = "",
+    var checked: Boolean = false,
+    var index: Int = 0
+)
+
 data class InventoryItem(
+    var name: String = "",
     var current: Int = 0,
-    var max: Int = 0
+    var max: Int = 0,
+    var index: Int = 0
 )
 
 data class ServerHandler(
     var address: String = "",
     var password: String = "",
     var status: ConnectionStatus = ConnectionStatus.NO_CONN,
-
-    // TODO(ElkElan): convert these from hashmaps to lists
-    var checklist: MutableMap<String, Boolean> = mutableMapOf(),
+    var checklist: MutableMap<String, ChecklistItem> = mutableMapOf(),
     var inventory: MutableMap<String, InventoryItem> = mutableMapOf()
 )
 
-val ServerHandlerSaver = run {
-    val addressKey = "address"
-    val passwordKey = "password"
-    val statusKey = "status"
-    val checklistSizeKey = "checklist-size"
-    val inventorySizeKey = "inventory-size"
-    val checklistKey = "checklist"
-    val inventoryKey = "inventory"
-    mapSaver(
-        save = { serverHandler ->
-            val map = mutableMapOf(
-                addressKey to serverHandler.address,
-                passwordKey to serverHandler.password,
-                statusKey to ConnectionStatus.toInt(serverHandler.status),
-                checklistSizeKey to serverHandler.checklist.size,
-                inventorySizeKey to serverHandler.inventory.size
-            )
+fun sortChecklist(items: List<ChecklistItem>): List<ChecklistItem> {
+    return items.sortedWith(compareBy {
+        if (it.checked) 1 else 0
+    })
+}
 
-            var index = 0
-            for((key, value) in serverHandler.checklist) {
-                map["$checklistKey-$index-key"] = key
-                map["$checklistKey-$index-value"] = value
-                index++
-            }
+fun buildChecklist(serverHandler: ServerHandler): List<ChecklistItem> {
+    val result: MutableList<ChecklistItem> = mutableListOf()
+    serverHandler.checklist.forEach { (_, value) ->
+        result.add(value)
+    }
 
-            index = 0
-            for((key, value) in serverHandler.inventory) {
-                map["$inventoryKey-$index-key"] = key
-                map["$inventoryKey-$index-value-current"] = value.current
-                map["$inventoryKey-$index-value-max"] = value.max
-                index++
-            }
+    return result.toList().sortedWith(compareBy {
+        it.index
+    })
+}
 
-            return@mapSaver map
-        },
+fun sortInventory(items: List<InventoryItem>): List<InventoryItem> {
+    return items.sortedWith(compareBy {
+        it.current
+    })
+}
 
-        restore = { map ->
-            val checklistSize = map[checklistSizeKey] as Int? ?: 0
-            val inventorySize = map[inventorySizeKey] as Int? ?: 0
-            val serverHandler = ServerHandler()
-            serverHandler.address = map[addressKey] as String? ?: ""
-            serverHandler.password = map[passwordKey] as String? ?: ""
-            serverHandler.status = ConnectionStatus.fromInt(
-                map[statusKey] as Int? ?: 0
-            )
+fun buildInventory(serverHandler: ServerHandler): List<InventoryItem> {
+    val result: MutableList<InventoryItem> = mutableListOf()
+    serverHandler.inventory.forEach { (_, value) ->
+        result.add(value)
+    }
 
-            for(i in 0..checklistSize) {
-                val key = map["$checklistSizeKey-$i-key"] as String?
-                val value = map["$checklistSizeKey-$i-value"] as Boolean?
-                key?. let { value?. let {
-                    serverHandler.checklist[key] = value
-                } }
-            }
-
-            for(i in 0..inventorySize) {
-                val key = map["$inventorySizeKey-$i-key"] as String?
-                val current = map["$inventorySizeKey-$i-value-current"] as Int?
-                val max = map["$inventorySizeKey-$i-value-max"] as Int?
-                key?. let { current?. let { max?. let {
-                    serverHandler.inventory[key] = InventoryItem(
-                        current,
-                        max
-                    )
-                } } }
-            }
-
-            return@mapSaver serverHandler
-        }
-    )
+    return result.toList().sortedWith(compareBy {
+        it.index
+    })
 }
 
 @Composable
-fun ActualApp(modifier: Modifier, context: Context) {
+fun ActualApp(
+    modifier: Modifier,
+    context: Context,
+    serverHandler: ServerHandler
+) {
     val maxWidthMod = Modifier
         .fillMaxWidth(fraction = 1f)
         .padding(
@@ -179,43 +127,27 @@ fun ActualApp(modifier: Modifier, context: Context) {
             vertical = 4.dp
         )
 
-    val addressText by rememberSaveable(stateSaver = TextFieldValue.Saver) {
-        mutableStateOf(
-            TextFieldValue("")
-        )
-    }
-
-    val passwordText by rememberSaveable(stateSaver = TextFieldValue.Saver) {
-        mutableStateOf(
-            TextFieldValue("")
-        )
-    }
-
+    var addressText by rememberSaveable(stateSaver = TextFieldValue.Saver) { mutableStateOf(TextFieldValue("")) }
+    var passwordText by rememberSaveable(stateSaver = TextFieldValue.Saver) { mutableStateOf(TextFieldValue("")) }
     var passwordVisible by rememberSaveable { mutableStateOf(false) }
     var tabIndex by remember { mutableIntStateOf(0) }
     val tabIndexChecklist = 0
     val tabIndexInventory = 1
     val titles = listOf("Checklist", "Inventory")
-    val listsScrollState by rememberSaveable(stateSaver = ScrollState.Saver) {
-        mutableStateOf(ScrollState(0))
-    }
-
-    val actionsScrollState by rememberSaveable(stateSaver = ScrollState.Saver) {
-        mutableStateOf(ScrollState(0))
-    }
-
-    val serverHandler by rememberSaveable(stateSaver = ServerHandlerSaver) {
-        mutableStateOf(ServerHandler())
-    }
-
-    serverHandler.checklist["test"] = true
+    val checklistScrollState by rememberSaveable(stateSaver = ScrollState.Saver) { mutableStateOf(ScrollState(0)) }
+    val inventoryScrollState by rememberSaveable(stateSaver = ScrollState.Saver) { mutableStateOf(ScrollState(0)) }
+    val actionsScrollState by rememberSaveable(stateSaver = ScrollState.Saver) { mutableStateOf(ScrollState(0)) }
+    var checklist: List<ChecklistItem> by rememberSaveable { mutableStateOf(listOf()) }
+    var inventory: List<InventoryItem> by rememberSaveable { mutableStateOf(listOf()) }
+    checklist = buildChecklist(serverHandler)
+    inventory = buildInventory(serverHandler)
     Column(
         modifier = modifier
     ) {
         TextField(
-            value = serverHandler.address,
+            value = addressText,
             onValueChange = { newText ->
-                serverHandler.address = newText
+                addressText = newText
             },
 
             label = { Text("Server Address/IP", onTextLayout = {}) },
@@ -224,9 +156,9 @@ fun ActualApp(modifier: Modifier, context: Context) {
         )
 
         TextField(
-            value = serverHandler.password,
+            value = passwordText,
             onValueChange = { newText ->
-                serverHandler.password = newText
+                passwordText = newText
             },
 
             label = { Text("Password", onTextLayout = {}) },
@@ -313,7 +245,33 @@ fun ActualApp(modifier: Modifier, context: Context) {
             )
 
             Button(
-                onClick = {},
+                onClick = {
+                    val sortedChecklist = sortChecklist(buildChecklist(serverHandler))
+                    val sortedInventory = sortInventory(buildInventory(serverHandler))
+                    for(i in sortedChecklist.indices) {
+                        serverHandler.checklist[sortedChecklist[i].name] = ChecklistItem(
+                            sortedChecklist[i].name,
+                            sortedChecklist[i].checked,
+                            i
+                        )
+                    }
+
+                    for(i in sortedInventory.indices) {
+                        serverHandler.inventory[sortedInventory[i].name] = InventoryItem(
+                            sortedInventory[i].name,
+                            sortedInventory[i].current,
+                            sortedInventory[i].max,
+                            i
+                        )
+                    }
+
+                    checklist = buildChecklist(serverHandler)
+                    inventory = buildInventory(serverHandler)
+
+                    // a trick to get LazyColumn to refresh
+                    tabIndex += 2
+                },
+
                 content = { Text("SORT", onTextLayout = {}) },
                 modifier = Modifier.padding(horizontal = 4.dp)
             )
@@ -335,83 +293,170 @@ fun ActualApp(modifier: Modifier, context: Context) {
             }
         }
 
-            when (tabIndex) {
-                tabIndexChecklist ->
-                    LazyColumn(
-                        modifier = Modifier.verticalScroll(listsScrollState)
-                    ) {
-                        items(serverHandler.checklist.size) { index ->
-                            var value by rememberSaveable {
-                                mutableStateOf(serverHandler.checklist[key])
-                            }
+        when (tabIndex) {
+            tabIndexChecklist ->
+                LazyColumn(
+                    modifier = Modifier
+                        .verticalScroll(checklistScrollState)
+                        .height(200.dp)
+                ) {
+                    items(checklist.size) { index ->
+                        var value by remember { mutableStateOf(checklist[index].checked) }
+                        val name = checklist[index].name
+                        if(serverHandler.checklist[name] == null) {
+                            return@items
+                        }
 
-                            value?.let {
-                                Row {
-                                    Checkbox(
-                                        checked = value!!,
-                                        onCheckedChange = { newChecked ->
-                                            serverHandler.checklist[key] = newChecked
-                                            value = newChecked
-                                        }
-                                    )
-
-                                    Text(
-                                        key,
-                                        modifier = Modifier.align(Alignment.CenterVertically),
-                                        onTextLayout = {}
-                                    )
-
-                                    Spacer(Modifier.weight(1f))
-                                    IconButton(
-                                        onClick = {
-                                            val dialogBuilder = AlertDialog.Builder(context)
-                                            dialogBuilder
-                                                .setMessage("Do you want to delete this?")
-                                                .setCancelable(false)
-                                                .setPositiveButton(
-                                                    "YES",
-                                                    DialogInterface.OnClickListener { _, _ ->
-                                                        serverHandler.checklist.remove(key)
-
-                                                    })
-
-                                                .setNegativeButton(
-                                                    "NO",
-                                                    DialogInterface.OnClickListener { dialog, _ ->
-                                                        dialog.cancel()
-                                                    })
-
-                                            val alert = dialogBuilder.create()
-                                            alert.setTitle("Are you sure you want to delete this?")
-                                            alert.show()
-                                        },
-                                    ) {
-                                        Icon(
-                                            imageVector = ImageVector.vectorResource(
-                                                R.drawable.delete
-                                            ),
-
-                                            "Delete this item"
-                                        )
-                                    }
+                        Row {
+                            Checkbox(
+                                checked = value,
+                                onCheckedChange = { newChecked ->
+                                    serverHandler.checklist[name]?.checked = newChecked
+                                    value = newChecked
                                 }
+                            )
+
+                            Text(
+                                name,
+                                modifier = Modifier.align(Alignment.CenterVertically),
+                                onTextLayout = {}
+                            )
+
+                            Spacer(Modifier.weight(1f))
+                            IconButton(
+                                onClick = {
+                                    val dialogBuilder = AlertDialog.Builder(context)
+                                    dialogBuilder
+                                        .setMessage("Do you want to delete this?")
+                                        .setCancelable(false)
+                                        .setPositiveButton(
+                                            "YES"
+                                        ) { _, _ ->
+                                            serverHandler.checklist.remove(name)
+                                            checklist = buildChecklist(serverHandler)
+                                        }
+
+                                        .setNegativeButton(
+                                            "NO"
+                                        ) { dialog, _ ->
+                                            dialog.cancel()
+                                        }
+
+                                    val alert = dialogBuilder.create()
+                                    alert.setTitle("Are you sure you want to delete this?")
+                                    alert.show()
+                                },
+                            ) {
+                                Icon(
+                                    imageVector = ImageVector.vectorResource(
+                                        R.drawable.delete
+                                    ),
+
+                                    "Delete this item"
+                                )
                             }
                         }
                     }
+                }
 
-                tabIndexInventory ->
-                    serverHandler.inventory.forEach { (key, value) ->
+            tabIndexInventory ->
+                LazyColumn(
+                    modifier = Modifier
+                        .verticalScroll(inventoryScrollState)
+                        .height(200.dp)
+                ) {
+                    items(inventory.size) { index ->
+                        var current by remember { mutableIntStateOf(inventory[index].current) }
+                        var max by remember { mutableIntStateOf(inventory[index].max) }
+                        var currentText by remember { mutableStateOf(TextFieldValue(current.toString())) }
+                        var maxText by remember { mutableStateOf(TextFieldValue(max.toString())) }
+                        val name = inventory[index].name
+                        if(serverHandler.inventory[name] == null) {
+                            return@items
+                        }
 
+                        Row {
+                            TextField(
+                                value = currentText,
+                                keyboardOptions = KeyboardOptions.Default.copy(
+                                    keyboardType = KeyboardType.Number
+                                ),
+
+                                onValueChange = { newValue ->
+                                    currentText = newValue
+                                    current = newValue.text.toIntOrNull() ?: 0
+                                    serverHandler.inventory[name]?.current = current
+                                },
+
+                                modifier = Modifier.width(100.dp)
+                            )
+
+                            Text(
+                                "/",
+                                modifier = Modifier.align(Alignment.CenterVertically),
+                                onTextLayout = {}
+                            )
+
+                            TextField(
+                                value = maxText,
+                                keyboardOptions = KeyboardOptions.Default.copy(
+                                    keyboardType = KeyboardType.Number
+                                ),
+
+                                onValueChange = { newValue ->
+                                    maxText = newValue
+                                    max = newValue.text.toIntOrNull() ?: 0
+                                    serverHandler.inventory[name]?.max = max
+                                },
+
+                                modifier = Modifier.width(100.dp)
+                            )
+
+                            Text(
+                                name,
+                                modifier = Modifier.align(Alignment.CenterVertically),
+                                onTextLayout = {}
+                            )
+
+                            Spacer(Modifier.weight(1f))
+                            IconButton(
+                                onClick = {
+                                    val dialogBuilder = AlertDialog.Builder(context)
+                                    dialogBuilder
+                                        .setMessage("Do you want to delete this?")
+                                        .setCancelable(false)
+                                        .setPositiveButton(
+                                            "YES"
+                                        ) { _, _ ->
+                                            serverHandler.inventory.remove(name)
+                                            inventory = buildInventory(serverHandler)
+                                        }
+
+                                        .setNegativeButton(
+                                            "NO"
+                                        ) { dialog, _ ->
+                                            dialog.cancel()
+                                        }
+
+                                    val alert = dialogBuilder.create()
+                                    alert.setTitle("Are you sure you want to delete this?")
+                                    alert.show()
+                                },
+                            ) {
+                                Icon(
+                                    imageVector = ImageVector.vectorResource(
+                                        R.drawable.delete
+                                    ),
+
+                                    "Delete this item"
+                                )
+                            }
+                        }
                     }
+                }
 
-                else ->
-                    Text(
-                        "Something went seriously wrong...",
-                        color = Color.Red,
-                        modifier = maxWidthMod,
-                        onTextLayout = {}
-                    )
-            }
+            2 -> tabIndex = 0
+            3 -> tabIndex = 1
         }
     }
 }
@@ -420,6 +465,11 @@ class MainActivity : ComponentActivity() {
     @OptIn(ExperimentalMaterial3Api::class)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        val serverHandler = ServerHandler()
+        serverHandler.checklist["test1"] = ChecklistItem("test1", true, 0)
+        serverHandler.checklist["test2"] = ChecklistItem("test2", false, 1)
+        serverHandler.inventory["test1"] = InventoryItem("test1", 1, 5, 0)
+        serverHandler.inventory["test2"] = InventoryItem("test2", 0, 6, 0)
         enableEdgeToEdge()
         setContent {
             MaterialTheme {
@@ -437,7 +487,11 @@ class MainActivity : ComponentActivity() {
                         )
                     }
                 ) { innerPadding ->
-                    ActualApp(Modifier.padding(innerPadding), this)
+                    ActualApp(
+                        Modifier.padding(innerPadding),
+                        this,
+                        serverHandler
+                    )
                 }
             }
         }
