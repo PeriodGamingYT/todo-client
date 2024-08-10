@@ -7,6 +7,7 @@ package com.github.periodgamingyt.todoclient
 import android.app.AlertDialog
 import android.content.Context
 import android.os.Bundle
+import android.webkit.URLUtil
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -70,12 +71,14 @@ import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.github.kittinunf.fuel.Fuel
 import com.github.kittinunf.fuel.core.extensions.jsonBody
+import com.google.gson.Gson
 import kotlinx.coroutines.runBlocking
 
 enum class ConnectionStatus {
     NO_CONN,
     ATTEMPT_CONN,
     BAD_PASS,
+    BAD_ADDR,
     FAIL_CONN,
     SUCCESS_CONN
 }
@@ -160,8 +163,8 @@ data class ServerResponse(
 data class ServerRequest(
     var type: Int,
     var password: String,
-    var checklist: Map<String, ServerChecklistItem>?,
-    var inventory: Map<String, ServerInventoryItem>?
+    var checklist: Map<String, ChecklistItem>?,
+    var inventory: Map<String, InventoryItem>?
 )
 
 fun boolToInt(value: Boolean): Int {
@@ -265,7 +268,7 @@ fun <T: Any> ItemColumn(
 	) {
 		items(items.size) { index ->
             val name = getName(index)
-			if(isItemNull(name)) {
+            if(isItemNull(name)) {
 				return@items
 			}
 
@@ -337,8 +340,109 @@ fun <T: Any> ItemColumn(
 	}
 }
 
+fun checklistToJson(items: Map<String, ChecklistItem>?): String {
+    if(items == null) {
+        return "null"
+    }
+
+    if(items.isEmpty()) {
+        return "{}"
+    }
+
+    var result = "{"
+    for((key, value) in items) {
+        result += """
+            "$key": {
+                "checked": ${value.checked},
+                "index": ${value.index}
+            },
+        """.trimIndent()
+    }
+
+    // remove last comma
+    result = result.substring(0, result.length - 1)
+    result += "}"
+    return result
+}
+
+fun inventoryToJson(items: Map<String, InventoryItem>?): String {
+    if(items == null) {
+        return "null"
+    }
+
+    if(items.isEmpty()) {
+        return "{}"
+    }
+
+    var result = "{"
+    for((key, value) in items) {
+        result += """
+            "$key": {
+                "current": ${value.current},
+                "max": ${value.max},
+                "index": ${value.index}
+            },
+        """.trimIndent()
+    }
+
+    // remove last comma
+    result = result.substring(0, result.length - 1)
+    result += "}"
+    return result
+}
+
+fun serverMessage(
+    request: ServerRequest,
+    address: String,
+    setStatus: (ConnectionStatus) -> Unit,
+    onResponse: (ServerResponse) -> Unit
+) {
+    val url = "http://$address"
+    if(!URLUtil.isValidUrl(url)) {
+        setStatus(ConnectionStatus.BAD_ADDR)
+        return
+    }
+
+    val jsonRequest = """
+        {
+            "type": ${request.type},
+            "password": "${request.password}",
+            "checklist": ${checklistToJson(request.checklist)},
+            "inventory": ${inventoryToJson(request.inventory)}
+        }
+    """.trimIndent()
+
+    setStatus(ConnectionStatus.ATTEMPT_CONN)
+    Fuel
+        .post(url)
+        .jsonBody(jsonRequest)
+        .response { _, response, result ->
+            result.fold(
+                success = { _ ->
+                    val serverResponse = Gson().fromJson(
+                        String(response.data),
+                        ServerResponse::class.java
+                    )
+
+                    if(!serverResponse.success) {
+                        setStatus(ConnectionStatus.BAD_PASS)
+                        return@response
+                    }
+
+                    setStatus(ConnectionStatus.SUCCESS_CONN)
+                    onResponse(serverResponse)
+                },
+
+                failure = { _ ->
+                    setStatus(ConnectionStatus.FAIL_CONN)
+                }
+            )
+        }
+}
+
 const val tabIndexChecklist = 0
 const val tabIndexInventory = 1
+const val tabIndexWait = 4
 const val requestTypeSave = 0
 const val requestTypeLoad = 1
 const val requestTypeTest = 2
@@ -360,8 +464,7 @@ fun ActualApp(
     var addressText by rememberSaveable(stateSaver = TextFieldValue.Saver) { mutableStateOf(TextFieldValue("")) }
     var passwordText by rememberSaveable(stateSaver = TextFieldValue.Saver) { mutableStateOf(TextFieldValue("")) }
     var passwordVisible by rememberSaveable { mutableStateOf(false) }
-    var tabIndex by remember { mutableIntStateOf(0) }
-
+    var tabIndex by rememberSaveable { mutableIntStateOf(0) }
     val titles = listOf("Checklist", "Inventory")
     val checklistScrollState by rememberSaveable(stateSaver = ScrollState.Saver) { mutableStateOf(ScrollState(0)) }
     val inventoryScrollState by rememberSaveable(stateSaver = ScrollState.Saver) { mutableStateOf(ScrollState(0)) }
@@ -379,8 +482,9 @@ fun ActualApp(
     ) {
         TextField(
             value = addressText,
-            onValueChange = { newText ->
-                addressText = newText
+            onValueChange = { newValue ->
+                addressText = newValue
+                serverHandler.address = newValue.text
             },
 
             label = { Text("Server Address/IP", onTextLayout = {}) },
@@ -390,8 +494,9 @@ fun ActualApp(
 
         TextField(
             value = passwordText,
-            onValueChange = { newText ->
-                passwordText = newText
+            onValueChange = { newValue ->
+                passwordText = newValue
+                serverHandler.password = newValue.text
             },
 
             label = { Text("Password", onTextLayout = {}) },
@@ -426,34 +531,27 @@ fun ActualApp(
             onClick = {
                 serverHandler.address = addressText.text
                 serverHandler.password = passwordText.text
-                val request = ServerRequest(
-                    requestTypeSave,
-                    serverHandler.password,
-                    null,
-                    null
+                serverMessage(
+                    ServerRequest(
+                        requestTypeTest,
+                        serverHandler.password,
+                        null,
+                        null
+                    ),
+
+                    serverHandler.address,
+
+                    // tabIndex forces a change for some strange reason.
+                    // the reason this is outside is because kotlin thinks
+                    // the comment is apart of the url for some reason.
+                    // F. I. R. E. D. Fired! #KotlinHate
+                    { value ->
+                        serverHandler.status = value
+                        tabIndex += 2
+                    },
+
+                    { _ -> }
                 )
-
-                val url = "http://" + serverHandler.address
-                var json: String
-                serverHandler.status = ConnectionStatus.ATTEMPT_CONN
-                Fuel
-                    .post(url)
-                    .jsonBody("{}") // TODO
-                    .response { request, response, result ->
-                        result.fold(
-                            success = { _ ->
-                                println("success, response below:")
-                                println(response)
-
-                                // TODO(ElkElan): Parse JSON
-                                println(String(response.data))
-                            },
-
-                            failure = { error ->
-                                serverHandler.status = ConnectionStatus.FAIL_CONN
-                            }
-                        )
-                    }
             },
 
             modifier = maxWidthMod,
@@ -463,9 +561,10 @@ fun ActualApp(
         Text(
             text = when(serverHandler.status) {
                 ConnectionStatus.NO_CONN -> "Not connected to a server, all changes are local"
-                ConnectionStatus.ATTEMPT_CONN -> "Attempting connection"
+                ConnectionStatus.ATTEMPT_CONN -> "Attempting connection/request"
                 ConnectionStatus.BAD_PASS -> "Incorrect password, all changes are local"
-                ConnectionStatus.FAIL_CONN -> "Failed connection, all changed are local"
+                ConnectionStatus.BAD_ADDR -> "Address is not a valid URL, all changes are local"
+                ConnectionStatus.FAIL_CONN -> "Failed connection, all changes are local"
                 ConnectionStatus.SUCCESS_CONN -> "Connected, click save to sync changes"
             },
 
@@ -474,6 +573,7 @@ fun ActualApp(
                 ConnectionStatus.NO_CONN -> Color.Red
                 ConnectionStatus.ATTEMPT_CONN -> Color.Yellow
                 ConnectionStatus.BAD_PASS -> Color.Red
+                ConnectionStatus.BAD_ADDR -> Color.Red
                 ConnectionStatus.FAIL_CONN -> Color.Red
                 ConnectionStatus.SUCCESS_CONN -> Color.Green
             },
@@ -553,6 +653,7 @@ fun ActualApp(
             Button(
                 onClick = {
                     runBlocking { dataStore.edit { prefs ->
+                        println(prefs)
                         serverHandler.address = prefs[stringPreferencesKey("address")] ?: ""
                         serverHandler.password = prefs[stringPreferencesKey("password")] ?: ""
                         val checklistSize = (
@@ -601,6 +702,8 @@ fun ActualApp(
 
                     checklist = buildChecklist(serverHandler)
                     inventory = buildInventory(serverHandler)
+                    addressText = TextFieldValue(serverHandler.address)
+                    passwordText = TextFieldValue(serverHandler.password)
 
                     // a trick to get LazyColumn to refresh
                     tabIndex += 2
@@ -612,11 +715,22 @@ fun ActualApp(
 
             Button(
                 onClick = {
-                    if(serverHandler.status != ConnectionStatus.SUCCESS_CONN) {
-                        return@Button
-                    }
+                    serverMessage(
+                        ServerRequest(
+                            requestTypeSave,
+                            serverHandler.password,
+                            serverHandler.checklist,
+                            serverHandler.inventory
+                        ),
 
-                    // TODO(ElkElan): figure out connect first
+                        serverHandler.address,
+                        { value ->
+                            serverHandler.status = value
+                            tabIndex += 2
+                        },
+
+                        { _ -> }
+                    )
                 },
 
                 content = { Text("SEND", onTextLayout = {}) },
@@ -625,11 +739,51 @@ fun ActualApp(
 
             Button(
                 onClick = {
-                    if(serverHandler.status != ConnectionStatus.SUCCESS_CONN) {
-                        return@Button
-                    }
 
-                    // TODO(ElkElan): figure out connect first
+                    // trick to avoid concurrent change
+                    val origTabIndex = tabIndex
+                    tabIndex = tabIndexWait
+                    serverMessage(
+                        ServerRequest(
+                            requestTypeLoad,
+                            serverHandler.password,
+                            null,
+                            null
+                        ),
+
+                        serverHandler.address,
+                        { value ->
+                            serverHandler.status = value
+                            tabIndex += 2
+                        },
+
+                        { response ->
+                            serverHandler.checklist.clear()
+                            for((key, value) in response.checklist) {
+                                serverHandler.checklist[key] = ChecklistItem(
+                                    key,
+                                    value.checked,
+                                    value.index
+                                )
+                            }
+
+                            serverHandler.inventory.clear()
+                            for((key, value) in response.inventory) {
+                                serverHandler.inventory[key] = InventoryItem(
+                                    key,
+                                    value.current,
+                                    value.max,
+                                    value.index
+                                )
+                            }
+
+                            checklist = buildChecklist(serverHandler)
+                            inventory = buildInventory(serverHandler)
+
+                            // a trick to get LazyColumn to refresh
+                            tabIndex = origTabIndex + 2
+                        }
+                    )
                 },
                 content = { Text("RECEIVE", onTextLayout = {}) },
                 modifier = Modifier.padding(horizontal = 4.dp)
@@ -702,7 +856,6 @@ fun ActualApp(
 
                     { value -> checklistAddShowDialog = value },
                     { name, index ->
-                        println("item looped in checklist")
                         var value by rememberSaveable { mutableStateOf(checklist[index].checked) }
                         Checkbox(
                             checked = value,
@@ -770,6 +923,9 @@ fun ActualApp(
             // trick to get lazy columns to forcefully refresh
             2 -> tabIndex = 0
             3 -> tabIndex = 1
+
+            // trick to avoid concurrent change
+            tabIndexWait -> {}
         }
 
         AddItemDialog(
