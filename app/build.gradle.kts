@@ -1,6 +1,7 @@
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.jetbrains.kotlin.android)
+    kotlin("plugin.serialization") version "2.0.0"
 }
 
 android {
@@ -58,7 +59,11 @@ dependencies {
     implementation("androidx.datastore:datastore:1.1.1")
     implementation("androidx.datastore:datastore-preferences:1.1.1")
     implementation("androidx.datastore:datastore-preferences-core:1.1.1")
+    implementation("com.github.kittinunf.fuel:fuel:2.3.1")
+    implementation("com.github.kittinunf.fuel:fuel-gson:2.3.1")
+    implementation("com.google.code.gson:gson:2.8.6")
     testImplementation(libs.junit)
+    testImplementation(kotlin("test-junit"))
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
     androidTestImplementation(platform(libs.androidx.compose.bom))
