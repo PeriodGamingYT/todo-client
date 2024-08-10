@@ -149,6 +149,169 @@ fun intToBool(value: Int): Boolean {
 }
 
 @Composable
+fun AddItemDialog(
+	text: String,
+	showDialog: Boolean,
+	setText: (String) -> Unit,
+	setShowDialog: (Boolean) -> Unit,
+	confirm: () -> Unit
+): Unit? {
+	if(!showDialog) {
+		return null
+	}
+
+	val h6 = TextStyle(
+		fontFamily = FontFamily.Default,
+		fontWeight = FontWeight.Medium,
+		fontSize = 20.sp,
+		lineHeight = 24.sp,
+		letterSpacing = 0.5.sp
+	)
+
+	return Dialog(
+		onDismissRequest = {}
+	) {
+		Surface(shape = MaterialTheme.shapes.medium) {
+			Column {
+				Column(modifier = Modifier.padding(24.dp)) {
+					Text(
+						"What name do you want?",
+						style = h6
+					)
+
+					Spacer(modifier = Modifier.size(16.dp))
+					OutlinedTextField(
+						value = text,
+						onValueChange = { newValue ->
+							setText(newValue)
+						},
+
+					   label = { Text("Name") }
+					)
+				}
+
+				Spacer(modifier = Modifier.size(4.dp))
+				Row(
+					modifier = Modifier
+						.padding(8.dp)
+						.fillMaxWidth(),
+
+					horizontalArrangement = Arrangement
+						.spacedBy(4.dp, Alignment.End)
+				) {
+					TextButton(
+						onClick = {
+							setShowDialog(false)
+						},
+
+						content = { Text("CANCEL") }
+					)
+
+					TextButton(
+						onClick = {
+                            setShowDialog(false)
+                            confirm()
+                        },
+
+						content = { Text("ADD") }
+					)
+				}
+			}
+		}
+	}
+}
+
+@Composable
+fun <T: Any> ItemColumn(
+    scrollState: ScrollState,
+    items: List<T>,
+    context: Context,
+    isItemNull: (String) -> Boolean,
+    getName: (Int) -> String,
+    removeItem: (String) -> Unit,
+    setShowDialog: (Boolean) -> Unit,
+    rowContent: @Composable (String, Int) -> Unit
+): Unit {
+	return LazyColumn(
+		modifier = Modifier
+		.verticalScroll(scrollState)
+		.height(200.dp)
+	) {
+		items(items.size) { index ->
+            val name = getName(index)
+			if(isItemNull(name)) {
+				return@items
+			}
+
+			Row {
+				rowContent(name, index)
+                Spacer(Modifier.width(8.dp))
+				Text(
+					name,
+					modifier = Modifier.align(Alignment.CenterVertically),
+					onTextLayout = {}
+				)
+
+				Spacer(Modifier.weight(1f))
+				IconButton(
+					onClick = {
+						val dialogBuilder = AlertDialog.Builder(context)
+						dialogBuilder
+                            .setMessage("Do you want to delete this?")
+                            .setCancelable(false)
+                            .setPositiveButton(
+                                "YES"
+                            ) { _, _ ->
+                                removeItem(name)
+                            }
+
+                            .setNegativeButton(
+                                "NO"
+                            ) { dialog, _ ->
+                                dialog.cancel()
+                            }
+
+						val alert = dialogBuilder.create()
+						alert.setTitle("Are you sure you want to delete this?")
+						alert.show()
+					},
+				) {
+					Icon(
+						imageVector = ImageVector.vectorResource(
+							R.drawable.delete
+						),
+
+						"Delete this item"
+					)
+				}
+			}
+		}
+
+		item {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                IconButton(
+                    onClick = {
+                        setShowDialog(true)
+                    },
+
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Icon(
+                        imageVector = ImageVector.vectorResource(
+                            R.drawable.add
+                        ),
+
+                        "Add an item"
+                    )
+                }
+            }
+        }
+	}
+}
+
+@Composable
 fun ActualApp(
     modifier: Modifier,
     context: Context,
@@ -176,14 +339,6 @@ fun ActualApp(
     var inventoryAddShowDialog by rememberSaveable { mutableStateOf(false) }
     var checklistAddText by rememberSaveable { mutableStateOf("") }
     var inventoryAddText by rememberSaveable { mutableStateOf("") }
-    val h6 = TextStyle(
-        fontFamily = FontFamily.Default,
-        fontWeight = FontWeight.Medium,
-        fontSize = 20.sp,
-        lineHeight = 24.sp,
-        letterSpacing = 0.5.sp
-    )
-
     var checklist: List<ChecklistItem> by rememberSaveable { mutableStateOf(listOf()) }
     var inventory: List<InventoryItem> by rememberSaveable { mutableStateOf(listOf()) }
     checklist = buildChecklist(serverHandler)
@@ -403,12 +558,6 @@ fun ActualApp(
             )
 
             Button(
-                onClick = {},
-                content = { Text("RECEIVE", onTextLayout = {}) },
-                modifier = Modifier.padding(horizontal = 4.dp)
-            )
-
-            Button(
                 onClick = {
                     val sortedChecklist = sortChecklist(buildChecklist(serverHandler))
                     val sortedInventory = sortInventory(buildInventory(serverHandler))
@@ -459,337 +608,130 @@ fun ActualApp(
 
         when (tabIndex) {
             tabIndexChecklist ->
-                LazyColumn(
-                    modifier = Modifier
-                        .verticalScroll(checklistScrollState)
-                        .height(200.dp)
-                ) {
-                    items(checklist.size) { index ->
-                        var value by remember { mutableStateOf(checklist[index].checked) }
-                        val name = checklist[index].name
-                        if(serverHandler.checklist[name] == null) {
-                            return@items
-                        }
+                ItemColumn(
+                    checklistScrollState,
+                    checklist,
+                    context,
+                    { name -> serverHandler.checklist[name] == null },
+                    { index -> checklist[index].name },
+                    { name ->
+                        serverHandler.checklist.remove(name)
+                        checklist = buildChecklist(serverHandler)
 
-                        Row {
-                            Checkbox(
-                                checked = value,
-                                onCheckedChange = { newChecked ->
-                                    serverHandler.checklist[name]?.checked = newChecked
-                                    value = newChecked
-                                }
-                            )
+                        // a trick to get LazyColumn to refresh
+                        tabIndex += 2
+                    },
 
-                            Text(
-                                name,
-                                modifier = Modifier.align(Alignment.CenterVertically),
-                                onTextLayout = {}
-                            )
-
-                            Spacer(Modifier.weight(1f))
-                            IconButton(
-                                onClick = {
-                                    val dialogBuilder = AlertDialog.Builder(context)
-                                    dialogBuilder
-                                        .setMessage("Do you want to delete this?")
-                                        .setCancelable(false)
-                                        .setPositiveButton(
-                                            "YES"
-                                        ) { _, _ ->
-                                            serverHandler.checklist.remove(name)
-                                            checklist = buildChecklist(serverHandler)
-                                        }
-
-                                        .setNegativeButton(
-                                            "NO"
-                                        ) { dialog, _ ->
-                                            dialog.cancel()
-                                        }
-
-                                    val alert = dialogBuilder.create()
-                                    alert.setTitle("Are you sure you want to delete this?")
-                                    alert.show()
-                                },
-                            ) {
-                                Icon(
-                                    imageVector = ImageVector.vectorResource(
-                                        R.drawable.delete
-                                    ),
-
-                                    "Delete this item"
-                                )
+                    { value -> checklistAddShowDialog = value },
+                    { name, index ->
+                        println("item looped in checklist")
+                        var value by rememberSaveable { mutableStateOf(checklist[index].checked) }
+                        Checkbox(
+                            checked = value,
+                            onCheckedChange = { newValue ->
+                                serverHandler.checklist[name]?.checked = newValue
+                                value = newValue
                             }
-                        }
+                        )
                     }
-
-                    item {
-                        IconButton(
-                            onClick = {
-                                checklistAddShowDialog = true
-                            },
-
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .align(Alignment.CenterHorizontally)
-                        ) {
-                            Icon(
-                                imageVector = ImageVector.vectorResource(
-                                    R.drawable.add
-                                ),
-
-                                "Add an item"
-                            )
-                        }
-                    }
-                }
+                )
 
             tabIndexInventory ->
-                LazyColumn(
-                    modifier = Modifier
-                        .verticalScroll(inventoryScrollState)
-                        .height(200.dp)
-                ) {
-                    items(inventory.size) { index ->
+                ItemColumn(
+                    inventoryScrollState,
+                    inventory,
+                    context,
+                    { name -> serverHandler.inventory[name] == null },
+                    { index -> inventory[index].name },
+                    { name ->
+                        serverHandler.inventory.remove(name)
+                        inventory = buildInventory(serverHandler)
+
+                        // a trick to get LazyColumn to refresh
+                        tabIndex += 2
+                    },
+
+                    { value -> inventoryAddShowDialog = value },
+                    { name, index ->
                         var current by remember { mutableIntStateOf(inventory[index].current) }
                         var max by remember { mutableIntStateOf(inventory[index].max) }
                         var currentText by remember { mutableStateOf(TextFieldValue(current.toString())) }
                         var maxText by remember { mutableStateOf(TextFieldValue(max.toString())) }
-                        val name = inventory[index].name
-                        if(serverHandler.inventory[name] == null) {
-                            return@items
-                        }
+                        TextField(
+                            value = currentText,
+                            keyboardOptions = KeyboardOptions.Default.copy(
+                                keyboardType = KeyboardType.Number
+                            ),
 
-                        Row {
-                            TextField(
-                                value = currentText,
-                                keyboardOptions = KeyboardOptions.Default.copy(
-                                    keyboardType = KeyboardType.Number
-                                ),
-
-                                onValueChange = { newValue ->
-                                    currentText = newValue
-                                    current = newValue.text.toIntOrNull() ?: 0
-                                    serverHandler.inventory[name]?.current = current
-                                },
-
-                                modifier = Modifier.width(100.dp)
-                            )
-
-                            Text(
-                                "/",
-                                modifier = Modifier.align(Alignment.CenterVertically),
-                                onTextLayout = {}
-                            )
-
-                            TextField(
-                                value = maxText,
-                                keyboardOptions = KeyboardOptions.Default.copy(
-                                    keyboardType = KeyboardType.Number
-                                ),
-
-                                onValueChange = { newValue ->
-                                    maxText = newValue
-                                    max = newValue.text.toIntOrNull() ?: 0
-                                    serverHandler.inventory[name]?.max = max
-                                },
-
-                                modifier = Modifier.width(100.dp)
-                            )
-
-                            Text(
-                                name,
-                                modifier = Modifier.align(Alignment.CenterVertically),
-                                onTextLayout = {}
-                            )
-
-                            Spacer(Modifier.weight(1f))
-                            IconButton(
-                                onClick = {
-                                    val dialogBuilder = AlertDialog.Builder(context)
-                                    dialogBuilder
-                                        .setMessage("Do you want to delete this?")
-                                        .setCancelable(false)
-                                        .setPositiveButton(
-                                            "YES"
-                                        ) { _, _ ->
-                                            serverHandler.inventory.remove(name)
-                                            inventory = buildInventory(serverHandler)
-                                        }
-
-                                        .setNegativeButton(
-                                            "NO"
-                                        ) { dialog, _ ->
-                                            dialog.cancel()
-                                        }
-
-                                    val alert = dialogBuilder.create()
-                                    alert.setTitle("Are you sure you want to delete this?")
-                                    alert.show()
-                                },
-                            ) {
-                                Icon(
-                                    imageVector = ImageVector.vectorResource(
-                                        R.drawable.delete
-                                    ),
-
-                                    "Delete this item"
-                                )
-                            }
-                        }
-                    }
-
-                    item {
-                        IconButton(
-                            onClick = {
-                                inventoryAddShowDialog = true
+                            onValueChange = { newValue ->
+                                currentText = newValue
+                                current = newValue.text.toIntOrNull() ?: 0
+                                serverHandler.inventory[name]?.current = current
                             },
 
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .align(Alignment.CenterHorizontally)
-                        ) {
-                            Icon(
-                                imageVector = ImageVector.vectorResource(
-                                    R.drawable.add
-                                ),
+                            modifier = Modifier.size(50.dp, 50.dp)
+                        )
 
-                                "Add an item"
-                            )
-                        }
+                        TextField(
+                            value = maxText,
+                            keyboardOptions = KeyboardOptions.Default.copy(
+                                keyboardType = KeyboardType.Number
+                            ),
+
+                            onValueChange = { newValue ->
+                                maxText = newValue
+                                max = newValue.text.toIntOrNull() ?: 0
+                                serverHandler.inventory[name]?.max = max
+                            },
+
+                            modifier = Modifier.size(50.dp, 50.dp)
+                        )
                     }
-                }
+                )
 
             // trick to get lazy columns to forcefully refresh
             2 -> tabIndex = 0
             3 -> tabIndex = 1
         }
 
-        if(checklistAddShowDialog) {
-            Dialog(
-                onDismissRequest = {}
-            ) {
-                Surface(shape = MaterialTheme.shapes.medium) {
-                    Column {
-                        Column(modifier = Modifier.padding(24.dp)) {
-                            Text(
-                                "What name do you want?",
-                                style = h6
-                            )
+        AddItemDialog(
+            checklistAddText,
+            checklistAddShowDialog,
+            { value -> checklistAddText = value },
+            { value -> checklistAddShowDialog = value },
+            {
+                serverHandler.checklist[checklistAddText] = ChecklistItem(
+                    checklistAddText,
+                    false,
+                    checklist.size
+                )
 
-                            Spacer(modifier = Modifier.size(16.dp))
-                            OutlinedTextField(
-                                value = checklistAddText,
-                                onValueChange = { newValue ->
-                                    checklistAddText = newValue
-                                },
+                checklist = buildChecklist(serverHandler)
 
-                                label = { Text("Name") }
-                            )
-                        }
-
-                        Spacer(modifier = Modifier.size(4.dp))
-                        Row(
-                            modifier = Modifier
-                                .padding(8.dp)
-                                .fillMaxWidth(),
-
-                            horizontalArrangement = Arrangement
-                                .spacedBy(4.dp, Alignment.End)
-                        ) {
-                            TextButton(
-                                onClick = {
-                                    checklistAddShowDialog = false
-                                },
-
-                                content = { Text("CANCEL") }
-                            )
-
-                            TextButton(
-                                onClick = {
-                                    serverHandler.checklist[checklistAddText] = ChecklistItem(
-                                        checklistAddText,
-                                        false,
-                                        checklist.size
-                                    )
-
-                                    checklistAddShowDialog = false
-                                    checklist = buildChecklist(serverHandler)
-
-                                    // a trick to get LazyColumn to refresh
-                                    tabIndex += 2
-                                },
-
-                                content = { Text("ADD") }
-                            )
-                        }
-                    }
-                }
+                // a trick to get LazyColumn to refresh
+                tabIndex += 2
             }
-        }
+        ) ?: Row {}
 
-        if(inventoryAddShowDialog) {
-            Dialog(
-                onDismissRequest = {}
-            ) {
-                Surface(shape = MaterialTheme.shapes.medium) {
-                    Column {
-                        Column(modifier = Modifier.padding(24.dp)) {
-                            Text(
-                                "What name do you want?",
-                                style = h6
-                            )
+        AddItemDialog(
+            inventoryAddText,
+            inventoryAddShowDialog,
+            { value -> inventoryAddText = value },
+            { value -> inventoryAddShowDialog = value },
+            {
+                serverHandler.inventory[inventoryAddText] = InventoryItem(
+                    inventoryAddText,
+                    0,
+                    0,
+                    inventory.size
+                )
 
-                            Spacer(modifier = Modifier.size(16.dp))
-                            OutlinedTextField(
-                                value = inventoryAddText,
-                                onValueChange = { newValue ->
-                                    inventoryAddText = newValue
-                                },
+                inventory = buildInventory(serverHandler)
 
-                                label = { Text("Name") }
-                            )
-                        }
-
-                        Spacer(modifier = Modifier.size(4.dp))
-                        Row(
-                            modifier = Modifier
-                                .padding(8.dp)
-                                .fillMaxWidth(),
-
-                            horizontalArrangement = Arrangement
-                                .spacedBy(4.dp, Alignment.End)
-                        ) {
-                            TextButton(
-                                onClick = {
-                                    inventoryAddShowDialog = false
-                                },
-
-                                content = { Text("CANCEL") }
-                            )
-
-                            TextButton(
-                                onClick = {
-                                    serverHandler.inventory[inventoryAddText] = InventoryItem(
-                                        inventoryAddText,
-                                        0,
-                                        0,
-                                        inventory.size
-                                    )
-
-                                    inventoryAddShowDialog = false
-                                    inventory = buildInventory(serverHandler)
-
-                                    // a trick to get LazyColumn to refresh
-                                    tabIndex += 2
-                                },
-
-                                content = { Text("ADD") }
-                            )
-                        }
-                    }
-                }
+                // a trick to get LazyColumn to refresh
+                tabIndex += 2
             }
-        }
+        ) ?: Row {}
     }
 }
 
