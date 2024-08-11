@@ -275,7 +275,7 @@ fun <T: Any> ItemColumn(
 			Row {
 				rowContent(name, index)
                 Spacer(Modifier.width(8.dp))
-				Text(
+                Text(
 					name,
 					modifier = Modifier.align(Alignment.CenterVertically),
 					onTextLayout = {}
@@ -398,7 +398,7 @@ fun serverMessage(
     onResponse: (ServerResponse) -> Unit
 ) {
     val url = "http://$address"
-    if(!URLUtil.isValidUrl(url)) {
+    if(!URLUtil.isValidUrl(url) || address.isEmpty()) {
         setStatus(ConnectionStatus.BAD_ADDR)
         return
     }
@@ -565,13 +565,13 @@ fun ActualApp(
                 ConnectionStatus.BAD_PASS -> "Incorrect password, all changes are local"
                 ConnectionStatus.BAD_ADDR -> "Address is not a valid URL, all changes are local"
                 ConnectionStatus.FAIL_CONN -> "Failed connection, all changes are local"
-                ConnectionStatus.SUCCESS_CONN -> "Connected, click save to sync changes"
+                ConnectionStatus.SUCCESS_CONN -> "Connected, click send to sync changes"
             },
 
             modifier = maxWidthMod,
             color = when(serverHandler.status) {
                 ConnectionStatus.NO_CONN -> Color.Red
-                ConnectionStatus.ATTEMPT_CONN -> Color.Yellow
+                ConnectionStatus.ATTEMPT_CONN -> Color.Black
                 ConnectionStatus.BAD_PASS -> Color.Red
                 ConnectionStatus.BAD_ADDR -> Color.Red
                 ConnectionStatus.FAIL_CONN -> Color.Red
