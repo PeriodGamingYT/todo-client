@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
@@ -888,7 +889,7 @@ fun ActualApp(
                         var max by remember { mutableIntStateOf(inventory[index].max) }
                         var currentText by remember { mutableStateOf(TextFieldValue(current.toString())) }
                         var maxText by remember { mutableStateOf(TextFieldValue(max.toString())) }
-                        TextField(
+                        OutlinedTextField(
                             value = currentText,
                             keyboardOptions = KeyboardOptions.Default.copy(
                                 keyboardType = KeyboardType.Number
@@ -900,10 +901,19 @@ fun ActualApp(
                                 serverHandler.inventory[name]?.current = current
                             },
 
-                            modifier = Modifier.size(50.dp, 50.dp)
+                            modifier = Modifier.size(100.dp, 50.dp)
                         )
 
-                        TextField(
+                        Text(
+                            "/",
+                            fontSize = 40.sp,
+                            fontWeight = FontWeight.Light,
+                            modifier = Modifier
+                                .wrapContentHeight(align = Alignment.CenterVertically)
+                                .padding(horizontal = 4.dp, vertical = 0.dp)
+                        )
+
+                        OutlinedTextField(
                             value = maxText,
                             keyboardOptions = KeyboardOptions.Default.copy(
                                 keyboardType = KeyboardType.Number
@@ -915,7 +925,7 @@ fun ActualApp(
                                 serverHandler.inventory[name]?.max = max
                             },
 
-                            modifier = Modifier.size(50.dp, 50.dp)
+                            modifier = Modifier.size(100.dp, 50.dp)
                         )
                     }
                 )
