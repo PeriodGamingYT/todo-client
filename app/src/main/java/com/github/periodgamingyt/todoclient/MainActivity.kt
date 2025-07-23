@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -31,6 +32,7 @@ import androidx.compose.material3.Checkbox
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
@@ -889,6 +891,12 @@ fun ActualApp(
                         var max by remember { mutableIntStateOf(inventory[index].max) }
                         var currentText by remember { mutableStateOf(TextFieldValue(current.toString())) }
                         var maxText by remember { mutableStateOf(TextFieldValue(max.toString())) }
+
+                        val textFieldModifier = Modifier
+                            .padding(4.dp, 4.dp, 4.dp, 0.dp)
+                            .heightIn(1.dp) // to override the TextField's min height
+                            .weight(1f)
+
                         OutlinedTextField(
                             value = currentText,
                             keyboardOptions = KeyboardOptions.Default.copy(
@@ -901,7 +909,8 @@ fun ActualApp(
                                 serverHandler.inventory[name]?.current = current
                             },
 
-                            modifier = Modifier.size(100.dp, 50.dp)
+                            singleLine = true,
+                            modifier = textFieldModifier
                         )
 
                         Text(
@@ -910,7 +919,7 @@ fun ActualApp(
                             fontWeight = FontWeight.Light,
                             modifier = Modifier
                                 .wrapContentHeight(align = Alignment.CenterVertically)
-                                .padding(horizontal = 4.dp, vertical = 0.dp)
+                                .padding(0.dp, 4.dp, 0.dp, 0.dp)
                         )
 
                         OutlinedTextField(
@@ -925,7 +934,8 @@ fun ActualApp(
                                 serverHandler.inventory[name]?.max = max
                             },
 
-                            modifier = Modifier.size(100.dp, 50.dp)
+                            singleLine = true,
+                            modifier = textFieldModifier
                         )
                     }
                 )
