@@ -632,9 +632,9 @@ fun ActualApp(
 
                     for(i in inventory.indices) {
                         val item = inventory[i]
-                        items.add(DatastoreItem("checklist-$i-name", item.name))
-                        items.add(DatastoreItem("checklist-$i-current", item.current.toString()))
-                        items.add(DatastoreItem("checklist-$i-max", item.max.toString()))
+                        items.add(DatastoreItem("inventory-$i-name", item.name))
+                        items.add(DatastoreItem("inventory-$i-current", item.current.toString()))
+                        items.add(DatastoreItem("inventory-$i-max", item.max.toString()))
                     }
 
                     runBlocking { dataStore.edit { prefs ->
